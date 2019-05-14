@@ -20,11 +20,11 @@ public class Server {
     private final AtomicInteger ioThreadId = new AtomicInteger(0);
     private ServerSocketChannel serverSocket;
     private InetSocketAddress serverAddress;
-    private IOThread[] ioThreads;
+    private ServerThread[] serverThreads;
     private AcceptThread acceptThread;
     private final AtomicInteger nextIOThreadId = new AtomicInteger();
     private volatile boolean stopping = false;
-    private final int ioThreadCount;
+    private final int serverThreadCount;
     private final String hostname;
     private final int port;
     private final int receiveBufferSize;
@@ -35,7 +35,7 @@ public class Server {
     private final boolean directBuffers;
 
     public Server(Context context) {
-        this.ioThreadCount = context.ioThreadCount;
+        this.serverThreadCount = context.serverThreadCount;
         this.hostname = context.hostname;
         this.port = context.port;
         this.receiveBufferSize = context.receiveBufferSize;
@@ -47,7 +47,7 @@ public class Server {
     }
 
     public int ioThreadCount() {
-        return ioThreadCount;
+        return serverThreadCount;
     }
 
     public String hostname() {
@@ -92,8 +92,8 @@ public class Server {
         stopping = true;
         serverSocket.close();
         acceptThread.shutdown();
-        for (IOThread ioThread : ioThreads) {
-            ioThread.shutdown();
+        for (ServerThread serverThread : serverThreads) {
+            serverThread.shutdown();
         }
     }
 
@@ -110,25 +110,25 @@ public class Server {
 
         serverSocket.configureBlocking(false);
 
-        this.ioThreads = new IOThread[ioThreadCount];
-        for (int k = 0; k < ioThreadCount; k++) {
-            ioThreads[k] = new IOThread();
-            ioThreads[k].start();
+        this.serverThreads = new ServerThread[serverThreadCount];
+        for (int k = 0; k < serverThreadCount; k++) {
+            serverThreads[k] = new ServerThread();
+            serverThreads[k].start();
         }
         this.acceptThread = new AcceptThread();
         acceptThread.start();
     }
 
-    private IOThread nextIOThread() {
-        int next = nextIOThreadId.getAndIncrement() % ioThreadCount;
-        return ioThreads[next];
+    private ServerThread nextIOThread() {
+        int next = nextIOThreadId.getAndIncrement() % serverThreadCount;
+        return serverThreads[next];
     }
 
-    private class IOThread extends Thread {
+    private class ServerThread extends Thread {
         private final Selector selector;
         private final ConcurrentLinkedQueue<SocketChannel> newChannels = new ConcurrentLinkedQueue<>();
 
-        private IOThread() throws IOException {
+        private ServerThread() throws IOException {
             super("IOThread#" + ioThreadId.getAndIncrement());
             setDaemon(true);
             selector = optimizeSelector ? Util.newSelector() : Selector.open();
@@ -193,49 +193,49 @@ public class Server {
 
                 channel.socket().setTcpNoDelay(tcpNoDelay);
 
-                Session session = new Session();
-                session.receiveBuffer = directBuffers
+                Connection con = new Connection();
+                con.receiveBuffer = directBuffers
                         ? ByteBuffer.allocateDirect(receiveBufferSize)
                         : ByteBuffer.allocate(receiveBufferSize);
-                session.sendBuffer = directBuffers
+                con.sendBuffer = directBuffers
                         ? ByteBuffer.allocateDirect(sendBufferSize)
                         : ByteBuffer.allocate(sendBufferSize);
 
-                // System.out.println(toDebugString("create sendBuffer", session.sendBuffer));
+                // System.out.println(toDebugString("create sendBuffer", connection.sendBuffer));
 
-                session.channel = channel;
+                con.channel = channel;
 
-                channel.register(selector, SelectionKey.OP_READ, session);
+                channel.register(selector, SelectionKey.OP_READ, con);
 
-                // log(getName() + " waiting for data on " + session.channel.socket().getInetAddress());
+                // log(getName() + " waiting for data on " + connection.channel.socket().getInetAddress());
             }
         }
 
         private void onWrite(SelectionKey sk) throws IOException {
             SocketChannel clientChannel = (SocketChannel) sk.channel();
-            Session session = (Session) sk.attachment();
-            session.onWriteEvents++;
+            Connection con = (Connection) sk.attachment();
+            con.onWriteEvents++;
 
-            //System.out.println(toDebugString("sendBuffer", session.sendBuffer));
+            //System.out.println(toDebugString("sendBuffer", con.sendBuffer));
 
             for (; ; ) {
-                Request request = session.processingRequest;
+                Request request = con.processingRequest;
                 if (request == null) {
-                    request = session.pendingRequests.poll();
+                    request = con.pendingRequests.poll();
                     if (request == null) {
                         break;
                     }
                 }
 
-                session.processingRequest = request;
-                if (session.sendBuffer.remaining() < 4) {
+                con.processingRequest = request;
+                if (con.sendBuffer.remaining() < 4) {
                     break;
                 }
 
-                session.sendBuffer.putInt(request.length);
+                con.sendBuffer.putInt(request.length);
 
-                int sendBufferRemaining = session.sendBuffer.remaining();
-                int remaining = request.length - session.sendOffset;
+                int sendBufferRemaining = con.sendBuffer.remaining();
+                int remaining = request.length - con.sendOffset;
                 boolean complete = false;
                 if (sendBufferRemaining <= remaining) {
                     remaining = sendBufferRemaining;
@@ -243,31 +243,31 @@ public class Server {
                     complete = true;
                 }
 
-                session.sendBuffer.put(request.bytes, session.sendOffset, remaining);
+                con.sendBuffer.put(request.bytes, con.sendOffset, remaining);
 
                 if (complete) {
-                    if (objectPoolingEnabled && (session.pooledBytes == null || session.pooledBytes.length < request.bytes.length)) {
-                        session.pooledBytes = request.bytes;
+                    if (objectPoolingEnabled && (con.pooledBytes == null || con.pooledBytes.length < request.bytes.length)) {
+                        con.pooledBytes = request.bytes;
                     }
                     request.bytes = null;
                     request.length = 0;
                     if (objectPoolingEnabled) {
-                        session.pooledRequests.add(request);
+                        con.pooledRequests.add(request);
                     }
-                    session.processingRequest = null;
-                    session.sendOffset = 0;
+                    con.processingRequest = null;
+                    con.sendOffset = 0;
                 } else {
-                    session.sendOffset += remaining;
+                    con.sendOffset += remaining;
                     break;
                 }
             }
 
-            session.sendBuffer.flip();
+            con.sendBuffer.flip();
 
-            int written = clientChannel.write(session.sendBuffer);
+            int written = clientChannel.write(con.sendBuffer);
             //System.out.println("Written:" + written + " bytes to socket");
 
-            if (session.sendBuffer.remaining() == 0 || session.processingRequest != null) {
+            if (con.sendBuffer.remaining() == 0 || con.processingRequest != null) {
                 // System.out.println("unregister");
                 // unregister
                 int interestOps = sk.interestOps();
@@ -280,62 +280,62 @@ public class Server {
                 sk.interestOps(sk.interestOps() | SelectionKey.OP_WRITE);
             }
 
-            compactOrClear(session.sendBuffer);
+            compactOrClear(con.sendBuffer);
         }
 
         private void onRead(SelectionKey sk) throws IOException {
             SocketChannel clientChannel = (SocketChannel) sk.channel();
-            Session session = (Session) sk.attachment();
-            session.onReadEvents++;
+            Connection con = (Connection) sk.attachment();
+            con.onReadEvents++;
 
-            int read = clientChannel.read(session.receiveBuffer);
+            int read = clientChannel.read(con.receiveBuffer);
             if (read == -1) {
                 log("Closing: " + clientChannel.socket().getInetAddress());
-                log(clientChannel.socket().getInetAddress() + " bytes read:" + session.bytesRead);
-                log(clientChannel.socket().getInetAddress() + " onReadEvents:" + session.onReadEvents);
+                log(clientChannel.socket().getInetAddress() + " bytes read:" + con.bytesRead);
+                log(clientChannel.socket().getInetAddress() + " onReadEvents:" + con.onReadEvents);
                 clientChannel.close();
                 return;
             }
 
             // log("read:" + read + " bytes");
 
-            session.receiveBuffer.flip();
+            con.receiveBuffer.flip();
             boolean added = false;
             try {
-                while (session.receiveBuffer.remaining() > 0) {
-                    if (session.receivingRequest == null) {
-                        if (session.receiveBuffer.remaining() < 4) {
+                while (con.receiveBuffer.remaining() > 0) {
+                    if (con.receivingRequest == null) {
+                        if (con.receiveBuffer.remaining() < 4) {
                             break;
                         }
-                        session.receivingRequest = session.pooledRequests.poll();
-                        if (session.receivingRequest == null) {
-                            session.receivingRequest = new Request();
+                        con.receivingRequest = con.pooledRequests.poll();
+                        if (con.receivingRequest == null) {
+                            con.receivingRequest = new Request();
                         }
-                        session.receivingRequest.length = session.receiveBuffer.getInt();
-                        if (objectPoolingEnabled && session.pooledBytes != null && session.pooledBytes.length >= session.receivingRequest.length) {
-                            session.receivingRequest.bytes = session.pooledBytes;
-                            session.pooledBytes = null;
+                        con.receivingRequest.length = con.receiveBuffer.getInt();
+                        if (objectPoolingEnabled && con.pooledBytes != null && con.pooledBytes.length >= con.receivingRequest.length) {
+                            con.receivingRequest.bytes = con.pooledBytes;
+                            con.pooledBytes = null;
                         } else {
-                            session.receivingRequest.bytes = new byte[session.receivingRequest.length];
+                            con.receivingRequest.bytes = new byte[con.receivingRequest.length];
                         }
                     }
 
-                    int missing = session.receivingRequest.length - session.receiveOffset;
-                    session.receiveBuffer.get(session.receivingRequest.bytes, session.receiveOffset, missing);
-                    session.receiveOffset += missing;
-                    if (session.receiveOffset == session.receivingRequest.length) {
-                        session.receiveOffset = 0;
-                        session.resLen = 0;
+                    int missing = con.receivingRequest.length - con.receiveOffset;
+                    con.receiveBuffer.get(con.receivingRequest.bytes, con.receiveOffset, missing);
+                    con.receiveOffset += missing;
+                    if (con.receiveOffset == con.receivingRequest.length) {
+                        con.receiveOffset = 0;
+                        con.resLen = 0;
                         added = true;
 
                         //      System.out.println("Received message");
-                        session.readMessages++;
-                        session.pendingRequests.add(session.receivingRequest);
-                        session.receivingRequest = null;
+                        con.readMessages++;
+                        con.pendingRequests.add(con.receivingRequest);
+                        con.receivingRequest = null;
                     }
                 }
             } finally {
-                compactOrClear(session.receiveBuffer);
+                compactOrClear(con.receiveBuffer);
             }
 
             if (added) {
@@ -343,7 +343,7 @@ public class Server {
             }
         }
 
-        public void shutdown() {
+        private void shutdown() {
             acceptThread.interrupt();
             try {
                 acceptThread.selector.close();
@@ -352,7 +352,7 @@ public class Server {
         }
     }
 
-    private static class Session {
+    private static class Connection {
         final ArrayDeque<Request> pendingRequests = new ArrayDeque<>();
 
         byte[] pooledBytes;
@@ -397,7 +397,7 @@ public class Server {
             }
         }
 
-        public void shutdown() {
+        private void shutdown() {
             acceptThread.interrupt();
             try {
                 acceptThread.selector.close();
@@ -428,7 +428,7 @@ public class Server {
         private void onAccept() throws IOException {
             SocketChannel clientChannel = serverSocket.accept();
             log("Accepted: " + clientChannel.getLocalAddress());
-            IOThread ioThread = nextIOThread();
+            ServerThread ioThread = nextIOThread();
             ioThread.newChannels.add(clientChannel);
             ioThread.selector.wakeup();
         }
@@ -443,7 +443,7 @@ public class Server {
     }
 
     public static class Context {
-        private int ioThreadCount = 10;
+        private int serverThreadCount = 10;
         private String hostname = "localhost";
         private int port = 1111;
         private int receiveBufferSize = 512 * 1024;
@@ -453,50 +453,49 @@ public class Server {
         private boolean optimizeSelector = true;
         private boolean directBuffers = true;
 
-        public Context setIoThreadCount(int ioThreadCount) {
-            this.ioThreadCount = ioThreadCount;
+        public Context serverThreadCount(int serverThreadCount) {
+            this.serverThreadCount = serverThreadCount;
             return this;
         }
 
-        public Context setHostname(String hostname) {
+        public Context hostname(String hostname) {
             this.hostname = hostname;
             return this;
         }
 
-        public Context setPort(int port) {
+        public Context port(int port) {
             this.port = port;
             return this;
         }
 
-        public Context setReceiveBufferSize(int receiveBufferSize) {
+        public Context receiveBufferSize(int receiveBufferSize) {
             this.receiveBufferSize = receiveBufferSize;
             return this;
         }
 
-        public Context setSendBufferSize(int sendBufferSize) {
+        public Context sendBufferSize(int sendBufferSize) {
             this.sendBufferSize = sendBufferSize;
             return this;
         }
 
-        public Context setTcpNoDelay(boolean tcpNoDelay) {
+        public Context tcpNoDelay(boolean tcpNoDelay) {
             this.tcpNoDelay = tcpNoDelay;
             return this;
         }
 
-        public Context setObjectPoolingEnabled(boolean objectPoolingEnabled) {
+        public Context objectPoolingEnabled(boolean objectPoolingEnabled) {
             this.objectPoolingEnabled = objectPoolingEnabled;
             return this;
         }
 
-        public Context setOptimizeSelector(boolean optimizeSelector) {
+        public Context optimizeSelector(boolean optimizeSelector) {
             this.optimizeSelector = optimizeSelector;
             return this;
         }
 
-        public Context setDirectBuffers(boolean directBuffers) {
+        public Context directBuffers(boolean directBuffers) {
             this.directBuffers = directBuffers;
             return this;
         }
     }
-
 }

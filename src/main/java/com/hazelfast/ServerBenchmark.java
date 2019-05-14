@@ -15,7 +15,6 @@ import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
 @BenchmarkMode(Mode.Throughput)
-@OutputTimeUnit(TimeUnit.MILLISECONDS)
 @State(Scope.Benchmark)
 @Fork(value = 2, jvmArgs = {"-Xms2G", "-Xmx2G"})
 //@Warmup(iterations = 3)
@@ -48,7 +47,7 @@ public class ServerBenchmark {
     }
 
     @Benchmark
-    public void benchmark(Blackhole bh) throws IOException {
+    public void benchmark() throws IOException {
         client.writeRequest("f");
         client.readResponse();
     }

@@ -10,7 +10,7 @@ public class Client {
 
     private InetSocketAddress address;
     private SocketChannel socketChannel;
-    private ByteBuffer sendBuffer;
+    ByteBuffer sendBuffer;
     private ByteBuffer receiveBuffer;
     private final String hostname;
     private final int receiveBufferSize;
@@ -18,14 +18,17 @@ public class Client {
     private final boolean tcpNoDelay;
     private final boolean directBuffers;
     private final boolean objectPoolingEnabled;
-
+    private final Counters counters;
+    private final Strings strings;
     public Client(Context context) {
-       hostname = context.hostname;
-       receiveBufferSize = context.receiveBufferSize;
-       sendBufferSize = context.sendBufferSize;
-       tcpNoDelay = context.tcpNoDelay;
-       directBuffers = context.directBuffers;
-       objectPoolingEnabled = context.objectPoolingEnabled;
+        hostname = context.hostname;
+        receiveBufferSize = context.receiveBufferSize;
+        sendBufferSize = context.sendBufferSize;
+        tcpNoDelay = context.tcpNoDelay;
+        directBuffers = context.directBuffers;
+        objectPoolingEnabled = context.objectPoolingEnabled;
+        counters = new Counters(this);
+        strings = new Strings(this);
     }
 
     public String hostname() {
@@ -76,6 +79,10 @@ public class Client {
         socketChannel.socket().setSendBufferSize(sendBufferSize);
     }
 
+    public Counters counters() {
+        return counters;
+    }
+
     public void stop() throws IOException {
         socketChannel.close();
     }
@@ -111,6 +118,18 @@ public class Client {
 
         //log("sending: " + companyName);
         sendBuffer.clear();
+    }
+
+    protected void write() {
+        try {
+            sendBuffer.flip();
+            socketChannel.write(sendBuffer);
+
+            //log("sending: " + companyName);
+            sendBuffer.clear();
+        }catch (IOException e){
+            throw new RuntimeException(e);
+        }
     }
 
     private byte[] pooledBytes;
