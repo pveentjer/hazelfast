@@ -451,7 +451,7 @@ public class Server {
         private boolean tcpNoDelay = true;
         private boolean objectPoolingEnabled = true;
         private boolean optimizeSelector = true;
-        private boolean directBuffers = false;
+        private boolean directBuffers = true;
 
         public Context setIoThreadCount(int ioThreadCount) {
             this.ioThreadCount = ioThreadCount;

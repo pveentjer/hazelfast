@@ -173,7 +173,7 @@ public class Client {
         private int receiveBufferSize = 128 * 1024;
         private int sendBufferSize = 128 * 1024;
         private boolean tcpNoDelay = true;
-        private boolean directBuffers = false;
+        private boolean directBuffers = true;
         private boolean objectPoolingEnabled = true;
 
         public Context hostname(String hostname) {
