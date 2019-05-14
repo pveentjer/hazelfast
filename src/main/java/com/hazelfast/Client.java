@@ -1,4 +1,4 @@
-package com.hazelcast.networktester;
+package com.hazelfast;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -7,7 +7,6 @@ import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 
 public class Client {
-
 
     private InetSocketAddress address;
     private SocketChannel socketChannel;

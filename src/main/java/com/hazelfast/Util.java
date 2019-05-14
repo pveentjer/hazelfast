@@ -1,4 +1,4 @@
-package com.hazelcast.networktester;
+package com.hazelfast;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -53,7 +53,7 @@ public class Util {
             throw new RuntimeException("Failed to open a Selector", e);
         }
 
-        boolean optimize = Boolean.parseBoolean(System.getProperty("hazelcast.io.optimizeselector", "true"));
+        boolean optimize = Boolean.parseBoolean(System.getProperty("hazelfast.io.optimizeselector", "true"));
         if (optimize) {
             optimize(selector);
         }

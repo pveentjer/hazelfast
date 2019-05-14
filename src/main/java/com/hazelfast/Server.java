@@ -1,4 +1,4 @@
-package com.hazelcast.networktester;
+package com.hazelfast;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -13,7 +13,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static com.hazelcast.networktester.Util.compactOrClear;
+import static com.hazelfast.Util.compactOrClear;
 
 public class Server {
 
