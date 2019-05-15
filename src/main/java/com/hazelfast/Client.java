@@ -1,10 +1,11 @@
 package com.hazelfast;
 
+import sun.nio.ch.IOUtil;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
-import java.util.ArrayList;
 
 public class Client {
 
@@ -20,6 +21,7 @@ public class Client {
     private final boolean objectPoolingEnabled;
     private final Counters counters;
     private final Strings strings;
+
     public Client(Context context) {
         hostname = context.hostname;
         receiveBufferSize = context.receiveBufferSize;
@@ -56,14 +58,18 @@ public class Client {
     }
 
     public static void main(String[] args) throws Exception {
-        Client client = new Client(new Context());
-        client.start();
-        client.dummyLoop();
-        client.stop();
+        Client client1 = new Client(new Context());
+        Client client2 = new Client(new Context());
+        client1.start();
+        client2.start();
+
+        //client.dummyLoop();
+        client1.stop();
+        client2.stop();
     }
 
     public void start() throws IOException {
-        log("Connecting to Server on port 1111...");
+        log("Connecting to Server on startPort 1111...");
 
         this.address = new InetSocketAddress(hostname, 1111);
         sendBuffer = directBuffers
@@ -88,19 +94,44 @@ public class Client {
     }
 
     public void dummyLoop() throws IOException {
-        ArrayList<String> companyDetails = new ArrayList<String>();
 
-        // create a ArrayList with companyName list
-        for (int k = 0; k < 100; k++) {
-            companyDetails.add("Facebook");
-            companyDetails.add("Twitter");
-            companyDetails.add("IBM");
-            companyDetails.add("Google");
+        try {
+            long startMs = System.currentTimeMillis();
+            int count = 100000;
+            for (int k = 0; k < count; k++) {
+                System.out.println("Writing request");
+                writeRequest(new byte[100 * 1024]);
+                System.out.println("Reading response");
+                readResponse();
+                System.out.println("k:" + k);
+            }
+            long durationMs = System.currentTimeMillis() - startMs;
+
+            System.out.println("Duration:" + durationMs + " ms");
+            System.out.println("Throughput:" + (1000f * count) / durationMs + " msg/second");
+        }catch (Throwable t){
+            t.printStackTrace();
         }
+    }
 
-        for (String companyName : companyDetails) {
-            writeRequest(companyName);
-            readResponse();
+    public void dummyLoopInternal() throws IOException {
+
+        try {
+            long startMs = System.currentTimeMillis();
+            int count = 100000;
+            for (int k = 0; k < count; k++) {
+                System.out.println("Writing request");
+                writeRequest(new byte[100 * 1024]);
+                System.out.println("Reading response");
+                readResponse();
+                System.out.println("k:" + k);
+            }
+            long durationMs = System.currentTimeMillis() - startMs;
+
+            System.out.println("Duration:" + durationMs + " ms");
+            System.out.println("Throughput:" + (1000f * count) / durationMs + " msg/second");
+        }catch (Throwable t){
+            t.printStackTrace();
         }
     }
 
@@ -110,11 +141,13 @@ public class Client {
 
     public void writeRequest(byte[] message) throws IOException {
         sendBuffer.putInt(message.length);
-        //sendBuffer.putInt(1);
+        //sendBuf.putInt(1);
         sendBuffer.put(message);
 
         sendBuffer.flip();
-        socketChannel.write(sendBuffer);
+        int written = socketChannel.write(sendBuffer);
+        //System.out.println("send "+written+" bytes, remaining:"+sendBuf.remaining());
+
 
         //log("sending: " + companyName);
         sendBuffer.clear();
@@ -127,7 +160,7 @@ public class Client {
 
             //log("sending: " + companyName);
             sendBuffer.clear();
-        }catch (IOException e){
+        } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
@@ -139,13 +172,20 @@ public class Client {
 
         int offset = 0;
         for (; ; ) {
+           // System.out.println(Util.toDebugString("receiveBuf",receiveBuf));
             int read = socketChannel.read(receiveBuffer);
-            // System.out.println("read:" + read);
+
+            if(read == -1){
+                socketChannel.close();
+                throw new IOException("Socket Closed by remote");
+            }
+
+            //System.out.println("read:" + read+" bytes,"+Util.toDebugString("receiveBuf",receiveBuf));
             receiveBuffer.flip();
 
             try {
                 if (bytes == null) {
-                    if (receiveBuffer.remaining() < 4) {
+                    if (receiveBuffer.remaining() < Util.INT_AS_BYTES) {
                         continue;
                     }
 

@@ -3,7 +3,6 @@ package com.hazelfast;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.CancelledKeyException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
@@ -14,9 +13,12 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.hazelfast.Util.INT_AS_BYTES;
 import static com.hazelfast.Util.compactOrClear;
+import static java.lang.Math.max;
 
 public class Server {
+
 
     private final AtomicInteger ioThreadId = new AtomicInteger(0);
     private ServerSocketChannel serverSocket;
@@ -39,7 +41,7 @@ public class Server {
     public Server(Context context) {
         this.serverThreadCount = context.serverThreadCount;
         this.bindAddress = context.bindAddress;
-        this.port = context.port;
+        this.port = context.startPort;
         this.receiveBufferSize = context.receiveBufferSize;
         this.sendBufferSize = context.sendBufferSize;
         this.tcpNoDelay = context.tcpNoDelay;
@@ -87,7 +89,10 @@ public class Server {
 
     @SuppressWarnings("unused")
     public static void main(String[] args) throws Exception {
-        Server server = new Server(new Context());
+        Server server = new Server(new Context().serverThreadCount(1));
+//                .receiveBufferSize(1024)
+//                .sendBufferSize(1024))
+
         server.start();
     }
 
@@ -155,15 +160,16 @@ public class Server {
                 registerNewChannels();
                 if (selectedKeys == 0) continue;
 
-                Iterator<SelectionKey> iterator = selector.selectedKeys().iterator();
-                while (iterator.hasNext()) {
-                    SelectionKey sk = iterator.next();
-                    iterator.remove();
+                Iterator<SelectionKey> it = selector.selectedKeys().iterator();
+                while (it.hasNext()) {
+                    SelectionKey sk = it.next();
+                    it.remove();
 
                     try {
                         if (sk.isReadable()) onRead(sk);
                         if (sk.isWritable()) onWrite(sk);
-                    } catch (CancelledKeyException e) {
+                    } catch (Throwable e) {
+                        e.printStackTrace();
                         sk.channel().close();
                     }
                 }
@@ -193,14 +199,14 @@ public class Server {
                 channel.socket().setTcpNoDelay(tcpNoDelay);
 
                 Connection con = new Connection();
-                con.receiveBuffer = directBuffers
+                con.receiveBuf = directBuffers
                         ? ByteBuffer.allocateDirect(receiveBufferSize)
                         : ByteBuffer.allocate(receiveBufferSize);
-                con.sendBuffer = directBuffers
+                con.sendBuf = directBuffers
                         ? ByteBuffer.allocateDirect(sendBufferSize)
                         : ByteBuffer.allocate(sendBufferSize);
 
-                // System.out.println(toDebugString("create sendBuffer", connection.sendBuffer));
+                // System.out.println(toDebugString("create sendBuf", connection.sendBuf));
 
                 con.channel = channel;
 
@@ -211,134 +217,133 @@ public class Server {
         }
 
         private void onWrite(SelectionKey sk) throws IOException {
-            SocketChannel clientChannel = (SocketChannel) sk.channel();
+            //System.out.println("onWrite");
+            SocketChannel channel = (SocketChannel) sk.channel();
             Connection con = (Connection) sk.attachment();
+            // todo: this field is increased even if we are triggered from the onRead
             con.onWriteEvents++;
 
-            //System.out.println(toDebugString("sendBuffer", con.sendBuffer));
+            //System.out.println("onWrite beforeFilling:" + toDebugString("sendBuf", con.sendBuf));
 
             for (; ; ) {
-                Request request = con.processingRequest;
-                if (request == null) {
-                    request = con.pendingRequests.poll();
-                    if (request == null) {
-                        break;
-                    }
+                if (con.sendFrame == null) {
+                    // check if there is enough space to write the length
+                    if (con.sendBuf.remaining() < INT_AS_BYTES) break;
+
+                    con.sendFrame = con.pending.poll();
+                    if (con.sendFrame == null) break;
+
+                    con.sendBuf.putInt(con.sendFrame.length);
                 }
 
-                con.processingRequest = request;
-                if (con.sendBuffer.remaining() < 4) {
-                    break;
-                }
-
-                con.sendBuffer.putInt(request.length);
-
-                int sendBufferRemaining = con.sendBuffer.remaining();
-                int remaining = request.length - con.sendOffset;
-                boolean complete = false;
-                if (sendBufferRemaining <= remaining) {
-                    remaining = sendBufferRemaining;
+                int missingFromFrame = con.sendFrame.length - con.sendOffset;
+                int bytesToWrite;
+                boolean complete;
+                if (con.sendBuf.remaining() <= missingFromFrame) {
+                    bytesToWrite = con.sendBuf.remaining();
+                    complete = false;
                 } else {
+                    bytesToWrite = missingFromFrame;
                     complete = true;
                 }
 
-                con.sendBuffer.put(request.bytes, con.sendOffset, remaining);
+                con.sendBuf.put(con.sendFrame.bytes, con.sendOffset, bytesToWrite);
 
                 if (complete) {
-                    if (objectPoolingEnabled && (con.pooledBytes == null || con.pooledBytes.length < request.bytes.length)) {
-                        con.pooledBytes = request.bytes;
+                    if (objectPoolingEnabled && (con.pooledBytes == null || con.pooledBytes.length < con.sendFrame.bytes.length)) {
+                        con.pooledBytes = con.sendFrame.bytes;
                     }
-                    request.bytes = null;
-                    request.length = 0;
+                    con.sendFrame.bytes = null;
+                    con.sendFrame.length = 0;
                     if (objectPoolingEnabled) {
-                        con.pooledRequests.add(request);
+                        con.pooledFrames.add(con.sendFrame);
                     }
-                    con.processingRequest = null;
+                    con.sendFrame = null;
                     con.sendOffset = 0;
                 } else {
-                    con.sendOffset += remaining;
+                    con.sendOffset += missingFromFrame;
                     break;
                 }
             }
+            con.sendBuf.flip();
 
-            con.sendBuffer.flip();
+            con.bytesWritten += channel.write(con.sendBuf);
 
-            int written = clientChannel.write(con.sendBuffer);
-            //System.out.println("Written:" + written + " bytes to socket");
-
-            if (con.sendBuffer.remaining() == 0 || con.processingRequest != null) {
-                // System.out.println("unregister");
+            if (con.sendBuf.remaining() == 0 && con.sendFrame == null) {
+                //System.out.println("unregister");
                 // unregister
                 int interestOps = sk.interestOps();
                 if ((interestOps & SelectionKey.OP_WRITE) != 0) {
                     sk.interestOps(interestOps & ~SelectionKey.OP_WRITE);
                 }
             } else {
-                //  System.out.println("register");
+                // System.out.println("register");
                 // register OP_WRITE
                 sk.interestOps(sk.interestOps() | SelectionKey.OP_WRITE);
             }
 
-            compactOrClear(con.sendBuffer);
+            compactOrClear(con.sendBuf);
         }
 
         private void onRead(SelectionKey sk) throws IOException {
-            SocketChannel clientChannel = (SocketChannel) sk.channel();
+            SocketChannel channel = (SocketChannel) sk.channel();
             Connection con = (Connection) sk.attachment();
             con.onReadEvents++;
 
-            int read = clientChannel.read(con.receiveBuffer);
-            if (read == -1) {
-                log("Closing: " + clientChannel.socket().getInetAddress());
-                log(clientChannel.socket().getInetAddress() + " bytes read:" + con.bytesRead);
-                log(clientChannel.socket().getInetAddress() + " onReadEvents:" + con.onReadEvents);
-                clientChannel.close();
-                return;
-            }
+            int bytesRead = channel.read(con.receiveBuf);
+            if (bytesRead == -1) throw new IOException("Channel closed on the other side");
+            con.bytesRead += bytesRead;
 
-            // log("read:" + read + " bytes");
-
-            con.receiveBuffer.flip();
-            boolean added = false;
+            con.receiveBuf.flip();
+            boolean dirty = false;
             try {
-                while (con.receiveBuffer.remaining() > 0) {
-                    if (con.receivingRequest == null) {
-                        if (con.receiveBuffer.remaining() < 4) {
-                            break;
-                        }
-                        con.receivingRequest = con.pooledRequests.poll();
-                        if (con.receivingRequest == null) {
-                            con.receivingRequest = new Request();
-                        }
-                        con.receivingRequest.length = con.receiveBuffer.getInt();
-                        if (objectPoolingEnabled && con.pooledBytes != null && con.pooledBytes.length >= con.receivingRequest.length) {
-                            con.receivingRequest.bytes = con.pooledBytes;
+                while (con.receiveBuf.remaining() > 0) {
+                    if (con.receiveFrame == null) {
+                        // not enough bytes available for the frame size; we are done.
+                        if (con.receiveBuf.remaining() < INT_AS_BYTES) break;
+
+                        con.receiveFrame = con.pooledFrames.poll();
+                        if (con.receiveFrame == null) con.receiveFrame = new Frame();
+
+                        con.receiveFrame.length = con.receiveBuf.getInt();
+                        if (con.receiveFrame.length < 0)
+                            throw new IOException("Frame length can't be negative. Found:" + con.receiveFrame.length);
+
+                        if (objectPoolingEnabled && con.pooledBytes != null && con.pooledBytes.length >= con.receiveFrame.length) {
+                            con.receiveFrame.bytes = con.pooledBytes;
                             con.pooledBytes = null;
                         } else {
-                            con.receivingRequest.bytes = new byte[con.receivingRequest.length];
+                            con.receiveFrame.bytes = new byte[con.receiveFrame.length];
                         }
                     }
 
-                    int missing = con.receivingRequest.length - con.receiveOffset;
-                    con.receiveBuffer.get(con.receivingRequest.bytes, con.receiveOffset, missing);
-                    con.receiveOffset += missing;
-                    if (con.receiveOffset == con.receivingRequest.length) {
-                        con.receiveOffset = 0;
-                        con.resLen = 0;
-                        added = true;
+                    int missingFromFrame = con.receiveFrame.length - con.receiveOffset;
+                    int bytesToRead = con.receiveBuf.remaining() < missingFromFrame ? con.receiveBuf.remaining() : missingFromFrame;
 
-                        //      System.out.println("Received message");
-                        con.readMessages++;
-                        con.pendingRequests.add(con.receivingRequest);
-                        con.receivingRequest = null;
+                    try {
+                        con.receiveBuf.get(con.receiveFrame.bytes, con.receiveOffset, bytesToRead);
+                    } catch (IndexOutOfBoundsException e) {
+                        throw new IndexOutOfBoundsException("missingFromFrame:" + missingFromFrame
+                                + " bytesToRead:" + bytesToRead
+                                + " con.receiveFrame.length:" + con.receiveFrame.length
+                                + " con.receiveOffset:" + con.receiveOffset
+                                + Util.toDebugString("receiveBuf", con.receiveBuf));
+                    }
+                    con.receiveOffset += bytesToRead;
+                    if (con.receiveOffset == con.receiveFrame.length) {
+                        // we have fully loaded a frame.
+                        dirty = true;
+                        con.readFrames++;
+                        con.pending.add(con.receiveFrame);
+                        con.receiveFrame = null;
+                        con.receiveOffset = 0;
                     }
                 }
             } finally {
-                compactOrClear(con.receiveBuffer);
+                compactOrClear(con.receiveBuf);
             }
 
-            if (added) onWrite(sk);
-
+            if (dirty) onWrite(sk);
         }
 
         private void shutdown() {
@@ -351,28 +356,27 @@ public class Server {
     }
 
     private static class Connection {
-        final ArrayDeque<Request> pendingRequests = new ArrayDeque<>();
-
-        byte[] pooledBytes;
-        final ArrayDeque<Request> pooledRequests = new ArrayDeque<>();
-
-        int onWriteEvents;
-        long resLen = -1;
-        ByteBuffer sendBuffer;
-
-        int receiveOffset;
-        long readMessages;
-        long bytesRead;
-        long onReadEvents;
         SocketChannel channel;
 
+        byte[] pooledBytes;
+        final ArrayDeque<Frame> pooledFrames = new ArrayDeque<>();
+
+        ByteBuffer receiveBuf;
+        Frame receiveFrame;
+        long onReadEvents;
+        int receiveOffset;
+        long readFrames;
+        long bytesRead;
+
+        long bytesWritten;
+        final ArrayDeque<Frame> pending = new ArrayDeque<>();
+        int onWriteEvents;
         int sendOffset;
-        ByteBuffer receiveBuffer;
-        Request receivingRequest;
-        Request processingRequest;
+        Frame sendFrame;
+        ByteBuffer sendBuf;
     }
 
-    private static class Request {
+    private static class Frame {
         int length;
         byte[] bytes;
     }
@@ -441,13 +445,13 @@ public class Server {
     }
 
     public static class Context {
-        private int serverThreadCount = 10;
+        private int serverThreadCount = max(4, Runtime.getRuntime().availableProcessors() / 2);
         private String bindAddress = "0.0.0.0";
-        private int port = 1111;
+        private int startPort = 1111;
         private int receiveBufferSize = 512 * 1024;
         private int sendBufferSize = 512 * 1024;
         private boolean tcpNoDelay = true;
-        private boolean objectPoolingEnabled = true;
+        private boolean objectPoolingEnabled = false;
         private boolean optimizeSelector = true;
         private boolean directBuffers = true;
         private boolean selectorSpin = false;
@@ -467,8 +471,8 @@ public class Server {
             return this;
         }
 
-        public Context port(int port) {
-            this.port = port;
+        public Context startPort(int startPort) {
+            this.startPort = startPort;
             return this;
         }
 

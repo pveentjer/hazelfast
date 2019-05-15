@@ -13,6 +13,7 @@ import static java.lang.Class.forName;
 import static java.lang.System.arraycopy;
 
 public class Util {
+    public static final int INT_AS_BYTES = 4;
 
     public static void compactOrClear(ByteBuffer bb) {
         if (bb.hasRemaining()) {
