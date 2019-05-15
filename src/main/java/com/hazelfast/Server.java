@@ -25,7 +25,7 @@ public class Server {
     private final AtomicInteger nextIOThreadId = new AtomicInteger();
     private volatile boolean stopping = false;
     private final int serverThreadCount;
-    private final String hostname;
+    private final String bindAddress;
     private final int port;
     private final int receiveBufferSize;
     private final int sendBufferSize;
@@ -33,10 +33,11 @@ public class Server {
     private final boolean objectPoolingEnabled;
     private final boolean optimizeSelector;
     private final boolean directBuffers;
+    private final boolean selectorSpin;
 
     public Server(Context context) {
         this.serverThreadCount = context.serverThreadCount;
-        this.hostname = context.hostname;
+        this.bindAddress = context.bindAddress;
         this.port = context.port;
         this.receiveBufferSize = context.receiveBufferSize;
         this.sendBufferSize = context.sendBufferSize;
@@ -44,6 +45,7 @@ public class Server {
         this.objectPoolingEnabled = context.objectPoolingEnabled;
         this.optimizeSelector = context.optimizeSelector;
         this.directBuffers = context.directBuffers;
+        this.selectorSpin = context.selectorSpin;
     }
 
     public int ioThreadCount() {
@@ -51,7 +53,7 @@ public class Server {
     }
 
     public String hostname() {
-        return hostname;
+        return bindAddress;
     }
 
     public int port() {
@@ -99,7 +101,7 @@ public class Server {
 
     public void start() throws IOException {
         serverSocket = ServerSocketChannel.open();
-        serverAddress = new InetSocketAddress(hostname, port);
+        serverAddress = new InetSocketAddress(bindAddress, port);
         serverSocket.bind(serverAddress);
 
         serverSocket.socket().setReceiveBufferSize(receiveBufferSize);
@@ -148,7 +150,11 @@ public class Server {
 
         private void loop() throws IOException {
             for (; ; ) {
-                selector.select();
+                if (selectorSpin)
+                    selector.selectNow();
+                else
+                    selector.select();
+
                 registerNewChannels();
                 Iterator<SelectionKey> iterator = selector.selectedKeys().iterator();
                 while (iterator.hasNext()) {
@@ -160,13 +166,9 @@ public class Server {
                         continue;
                     }
 
-                    if (sk.isReadable()) {
-                        onRead(sk);
-                    }
+                    if (sk.isReadable()) onRead(sk);
 
-                    if (sk.isWritable()) {
-                        onWrite(sk);
-                    }
+                    if (sk.isWritable()) onWrite(sk);
                 }
             }
         }
@@ -338,9 +340,8 @@ public class Server {
                 compactOrClear(con.receiveBuffer);
             }
 
-            if (added) {
-                onWrite(sk);
-            }
+            if (added) onWrite(sk);
+
         }
 
         private void shutdown() {
@@ -444,7 +445,7 @@ public class Server {
 
     public static class Context {
         private int serverThreadCount = 10;
-        private String hostname = "localhost";
+        private String bindAddress = "0.0.0.0";
         private int port = 1111;
         private int receiveBufferSize = 512 * 1024;
         private int sendBufferSize = 512 * 1024;
@@ -452,14 +453,20 @@ public class Server {
         private boolean objectPoolingEnabled = true;
         private boolean optimizeSelector = true;
         private boolean directBuffers = true;
+        private boolean selectorSpin = false;
+
+        public Context selectorSpin(boolean selectorSpin) {
+            this.selectorSpin = selectorSpin;
+            return this;
+        }
 
         public Context serverThreadCount(int serverThreadCount) {
             this.serverThreadCount = serverThreadCount;
             return this;
         }
 
-        public Context hostname(String hostname) {
-            this.hostname = hostname;
+        public Context bindAddress(String bindAddress) {
+            this.bindAddress = bindAddress;
             return this;
         }
 
