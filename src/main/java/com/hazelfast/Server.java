@@ -420,9 +420,8 @@ public class Server {
                     SelectionKey sk = iterator.next();
                     iterator.remove();
 
-                    if (sk.isAcceptable()) {
-                        onAccept();
-                    }
+                    if (sk.isAcceptable()) onAccept();
+
                 }
             }
         }

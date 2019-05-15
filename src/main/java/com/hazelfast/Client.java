@@ -5,6 +5,8 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
+import static com.hazelfast.IOUtil.compactOrClear;
+
 public class Client {
 
     private InetSocketAddress address;
@@ -216,7 +218,7 @@ public class Client {
                     offset += length;
                 }
             } finally {
-                IOUtil.compactOrClear(receiveBuffer);
+                compactOrClear(receiveBuffer);
             }
         }
     }
