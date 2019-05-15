@@ -3,6 +3,7 @@ package com.hazelfast;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.channels.CancelledKeyException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
@@ -150,25 +151,21 @@ public class Server {
 
         private void loop() throws IOException {
             for (; ; ) {
-                if (selectorSpin)
-                    selector.selectNow();
-                else
-                    selector.select();
-
+                int selectedKeys = selectorSpin ? selector.selectNow() : selector.select();
                 registerNewChannels();
+                if (selectedKeys == 0) continue;
+
                 Iterator<SelectionKey> iterator = selector.selectedKeys().iterator();
                 while (iterator.hasNext()) {
                     SelectionKey sk = iterator.next();
                     iterator.remove();
 
-                    if (!sk.isValid()) {
+                    try {
+                        if (sk.isReadable()) onRead(sk);
+                        if (sk.isWritable()) onWrite(sk);
+                    } catch (CancelledKeyException e) {
                         sk.channel().close();
-                        continue;
                     }
-
-                    if (sk.isReadable()) onRead(sk);
-
-                    if (sk.isWritable()) onWrite(sk);
                 }
             }
         }
