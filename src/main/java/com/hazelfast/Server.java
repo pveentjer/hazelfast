@@ -13,8 +13,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static com.hazelfast.Util.INT_AS_BYTES;
-import static com.hazelfast.Util.compactOrClear;
+import static com.hazelfast.IOUtil.INT_AS_BYTES;
+import static com.hazelfast.IOUtil.compactOrClear;
 import static java.lang.Math.max;
 
 public class Server {
@@ -139,7 +139,7 @@ public class Server {
         private ServerThread() throws IOException {
             super("IOThread#" + ioThreadId.getAndIncrement());
             setDaemon(true);
-            selector = optimizeSelector ? Util.newSelector() : Selector.open();
+            selector = optimizeSelector ? IOUtil.newSelector() : Selector.open();
         }
 
         @Override
@@ -327,7 +327,7 @@ public class Server {
                                 + " bytesToRead:" + bytesToRead
                                 + " con.receiveFrame.length:" + con.receiveFrame.length
                                 + " con.receiveOffset:" + con.receiveOffset
-                                + Util.toDebugString("receiveBuf", con.receiveBuf));
+                                + IOUtil.toDebugString("receiveBuf", con.receiveBuf));
                     }
                     con.receiveOffset += bytesToRead;
                     if (con.receiveOffset == con.receiveFrame.length) {
@@ -451,7 +451,7 @@ public class Server {
         private int receiveBufferSize = 512 * 1024;
         private int sendBufferSize = 512 * 1024;
         private boolean tcpNoDelay = true;
-        private boolean objectPoolingEnabled = false;
+        private boolean objectPoolingEnabled = true;
         private boolean optimizeSelector = true;
         private boolean directBuffers = true;
         private boolean selectorSpin = false;

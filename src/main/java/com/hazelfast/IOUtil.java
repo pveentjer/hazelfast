@@ -12,7 +12,7 @@ import java.util.NoSuchElementException;
 import static java.lang.Class.forName;
 import static java.lang.System.arraycopy;
 
-public class Util {
+public class IOUtil {
     public static final int INT_AS_BYTES = 4;
 
     public static void compactOrClear(ByteBuffer bb) {
@@ -99,7 +99,7 @@ public class Util {
     }
 
     static Class<?> findOptimizableSelectorClass(Selector selector) throws ClassNotFoundException {
-        Class<?> selectorImplClass = forName(SELECTOR_IMPL, false, Util.class.getClassLoader());
+        Class<?> selectorImplClass = forName(SELECTOR_IMPL, false, IOUtil.class.getClassLoader());
 
         // Ensure the current selector implementation is what we can instrument.
         if (!selectorImplClass.isAssignableFrom(selector.getClass())) {

@@ -1,7 +1,5 @@
 package com.hazelfast;
 
-import sun.nio.ch.IOUtil;
-
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -109,7 +107,7 @@ public class Client {
 
             System.out.println("Duration:" + durationMs + " ms");
             System.out.println("Throughput:" + (1000f * count) / durationMs + " msg/second");
-        }catch (Throwable t){
+        } catch (Throwable t) {
             t.printStackTrace();
         }
     }
@@ -130,7 +128,7 @@ public class Client {
 
             System.out.println("Duration:" + durationMs + " ms");
             System.out.println("Throughput:" + (1000f * count) / durationMs + " msg/second");
-        }catch (Throwable t){
+        } catch (Throwable t) {
             t.printStackTrace();
         }
     }
@@ -172,10 +170,10 @@ public class Client {
 
         int offset = 0;
         for (; ; ) {
-           // System.out.println(Util.toDebugString("receiveBuf",receiveBuf));
+            // System.out.println(Util.toDebugString("receiveBuf",receiveBuf));
             int read = socketChannel.read(receiveBuffer);
 
-            if(read == -1){
+            if (read == -1) {
                 socketChannel.close();
                 throw new IOException("Socket Closed by remote");
             }
@@ -185,7 +183,7 @@ public class Client {
 
             try {
                 if (bytes == null) {
-                    if (receiveBuffer.remaining() < Util.INT_AS_BYTES) {
+                    if (receiveBuffer.remaining() < IOUtil.INT_AS_BYTES) {
                         continue;
                     }
 
@@ -218,7 +216,7 @@ public class Client {
                     offset += length;
                 }
             } finally {
-                Util.compactOrClear(receiveBuffer);
+                IOUtil.compactOrClear(receiveBuffer);
             }
         }
     }
