@@ -141,7 +141,7 @@ public class Server {
         public void run() {
             log(getName() + " running");
             try {
-                loop();
+                selectLoop();
             } catch (Exception e) {
                 if (!stopping) {
                     log(e);
@@ -149,7 +149,7 @@ public class Server {
             }
         }
 
-        private void loop() throws IOException {
+        private void selectLoop() throws IOException {
             for (; ; ) {
                 int selectedKeys = selectorSpin ? selector.selectNow() : selector.select();
                 registerNewChannels();
