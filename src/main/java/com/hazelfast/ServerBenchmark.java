@@ -23,6 +23,7 @@ public class ServerBenchmark {
 
     private Client client;
     private Server server;
+    private byte[] message = "foo".getBytes();
 //    public static void main(String[] args) throws RunnerException {
 //        Options opt = new OptionsBuilder()
 //                .include(ServerBenchmark.class.getSimpleName())
@@ -48,7 +49,7 @@ public class ServerBenchmark {
 
     @Benchmark
     public void benchmark() throws IOException {
-        client.writeRequest("f");
+        client.writeRequest(message);
         client.readResponse();
     }
 }
