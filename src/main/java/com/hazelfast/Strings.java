@@ -1,11 +1,15 @@
 package com.hazelfast;
 
+import com.hazelfast.impl.DataStructures;
+import com.hazelfast.impl.StringsData;
+
 import java.nio.ByteBuffer;
 
+import static com.hazelfast.impl.DataStructures.STRINGS;
+import static com.hazelfast.impl.StringsData.FUNCTION_GET;
+import static com.hazelfast.impl.StringsData.FUNCTION_SET;
+
 public class Strings {
-    protected final byte ID = DataTypes.STRINGS;
-    protected final byte OP_GET = 1;
-    protected final byte OP_SET = 2;
     private final Client client;
 
     public Strings(Client client) {
@@ -14,8 +18,8 @@ public class Strings {
 
     public void set(String key, String value) {
         ByteBuffer b = client.sendBuffer;
-        b.put(ID);
-        b.put(OP_SET);
+        b.put(STRINGS);
+        b.put(FUNCTION_SET);
 
         client.write();
 
@@ -24,8 +28,8 @@ public class Strings {
 
     public String get(String key) {
         ByteBuffer b = client.sendBuffer;
-        b.put(ID);
-        b.put(OP_GET);
+        b.put(STRINGS);
+        b.put(FUNCTION_GET);
 
         client.write();
         return null;

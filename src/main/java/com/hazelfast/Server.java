@@ -1,5 +1,9 @@
 package com.hazelfast;
 
+import com.hazelfast.impl.DataStructures;
+import com.hazelfast.impl.Frame;
+import com.hazelfast.impl.IOUtil;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -13,8 +17,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static com.hazelfast.IOUtil.INT_AS_BYTES;
-import static com.hazelfast.IOUtil.compactOrClear;
+import static com.hazelfast.impl.IOUtil.INT_AS_BYTES;
+import static com.hazelfast.impl.IOUtil.compactOrClear;
 import static java.lang.Math.max;
 
 public class Server {
@@ -135,6 +139,7 @@ public class Server {
     private class ServerThread extends Thread {
         private final Selector selector;
         private final ConcurrentLinkedQueue<SocketChannel> newChannels = new ConcurrentLinkedQueue<>();
+        private final DataStructures ds = new DataStructures();
 
         private ServerThread() throws IOException {
             super("IOThread#" + ioThreadId.getAndIncrement());
@@ -320,15 +325,7 @@ public class Server {
                     int missingFromFrame = con.receiveFrame.length - con.receiveOffset;
                     int bytesToRead = con.receiveBuf.remaining() < missingFromFrame ? con.receiveBuf.remaining() : missingFromFrame;
 
-                    try {
-                        con.receiveBuf.get(con.receiveFrame.bytes, con.receiveOffset, bytesToRead);
-                    } catch (IndexOutOfBoundsException e) {
-                        throw new IndexOutOfBoundsException("missingFromFrame:" + missingFromFrame
-                                + " bytesToRead:" + bytesToRead
-                                + " con.receiveFrame.length:" + con.receiveFrame.length
-                                + " con.receiveOffset:" + con.receiveOffset
-                                + IOUtil.toDebugString("receiveBuf", con.receiveBuf));
-                    }
+                    con.receiveBuf.get(con.receiveFrame.bytes, con.receiveOffset, bytesToRead);
                     con.receiveOffset += bytesToRead;
                     if (con.receiveOffset == con.receiveFrame.length) {
                         // we have fully loaded a frame.
@@ -374,11 +371,6 @@ public class Server {
         int sendOffset;
         Frame sendFrame;
         ByteBuffer sendBuf;
-    }
-
-    private static class Frame {
-        int length;
-        byte[] bytes;
     }
 
     private class AcceptThread extends Thread {

@@ -4,15 +4,12 @@ import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
 import org.openjdk.jmh.annotations.Mode;
-import org.openjdk.jmh.annotations.OutputTimeUnit;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
-import org.openjdk.jmh.infra.Blackhole;
 
 import java.io.IOException;
-import java.util.concurrent.TimeUnit;
 
 @BenchmarkMode(Mode.Throughput)
 @State(Scope.Benchmark)
@@ -49,7 +46,7 @@ public class ServerBenchmark {
 
     @Benchmark
     public void benchmark() throws IOException {
-        client.writeRequest(message);
+        client.ping(message);
         client.readResponse();
     }
 }

@@ -1,4 +1,4 @@
-package com.hazelfast;
+package com.hazelfast.impl;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -14,6 +14,7 @@ import static java.lang.System.arraycopy;
 
 public class IOUtil {
     public static final int INT_AS_BYTES = 4;
+    public static final int LONG_AS_BYTES = 8;
 
     public static void compactOrClear(ByteBuffer bb) {
         if (bb.hasRemaining()) {
@@ -21,6 +22,11 @@ public class IOUtil {
         } else {
             bb.clear();
         }
+    }
+
+    public static void write(ByteBuffer dst, String s){
+        dst.putInt(s.length());
+
     }
 
     /**
@@ -45,7 +51,7 @@ public class IOUtil {
     * @return the created Selector.
      * @throws NullPointerException if logger is null.
      */
-    static Selector newSelector() {
+    public static Selector newSelector() {
 
         Selector selector;
         try {

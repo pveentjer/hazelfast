@@ -1,11 +1,14 @@
 package com.hazelfast;
 
+import com.hazelfast.impl.DataStructures;
+import com.hazelfast.impl.IOUtil;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
-import static com.hazelfast.IOUtil.compactOrClear;
+import static com.hazelfast.impl.IOUtil.compactOrClear;
 
 public class Client {
 
@@ -100,7 +103,7 @@ public class Client {
             int count = 100000;
             for (int k = 0; k < count; k++) {
                 System.out.println("Writing request");
-                writeRequest(new byte[100 * 1024]);
+                ping(new byte[100 * 1024]);
                 System.out.println("Reading response");
                 readResponse();
                 System.out.println("k:" + k);
@@ -121,7 +124,7 @@ public class Client {
             int count = 100000;
             for (int k = 0; k < count; k++) {
                 System.out.println("Writing request");
-                writeRequest(new byte[100 * 1024]);
+                ping(new byte[100 * 1024]);
                 System.out.println("Reading response");
                 readResponse();
                 System.out.println("k:" + k);
@@ -135,13 +138,14 @@ public class Client {
         }
     }
 
-    public void writeRequest(String message) throws IOException {
-        writeRequest(message.getBytes());
+    public void ping(String message) throws IOException {
+        ping(message.getBytes());
     }
 
-    public void writeRequest(byte[] message) throws IOException {
-        sendBuffer.putInt(message.length);
+    public void ping(byte[] message) throws IOException {
+        sendBuffer.putInt(message.length+1);
         //sendBuf.putInt(1);
+        sendBuffer.put(DataStructures.PING);
         sendBuffer.put(message);
 
         sendBuffer.flip();

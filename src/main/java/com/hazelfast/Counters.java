@@ -2,15 +2,16 @@ package com.hazelfast;
 
 import java.nio.ByteBuffer;
 
+import static com.hazelfast.impl.CountersData.FUNCTION_CAS;
+import static com.hazelfast.impl.CountersData.FUNCTION_GET;
+import static com.hazelfast.impl.CountersData.FUNCTION_INC;
+import static com.hazelfast.impl.CountersData.FUNCTION_SET;
+import static com.hazelfast.impl.IOUtil.LONG_AS_BYTES;
+import static com.hazelfast.impl.DataStructures.COUNTER;
+
 public final class Counters {
 
-    protected final byte ID = DataTypes.COUNTER;
-    protected final byte OP_GET = 1;
-    protected final byte OP_SET = 2;
-    protected final byte OP_INC = 3;
-    protected final byte OP_CAS = 4;
-
-    private final Client client;
+     private final Client client;
 
     public Counters(Client client) {
         this.client = client;
@@ -18,19 +19,21 @@ public final class Counters {
 
     public long get(long id) {
         ByteBuffer b = client.sendBuffer;
-        b.put(ID);
-        b.put(OP_GET);
+        b.putInt(1 + 1 + LONG_AS_BYTES);
+        b.put(COUNTER);
+        b.put(FUNCTION_GET);
         b.putLong(id);
         client.write();
-
         return 0;
     }
 
-    public long set(long id) {
+    public long set(long id, long value) {
         ByteBuffer b = client.sendBuffer;
-        b.put(ID);
-        b.put(OP_SET);
+        b.putInt(1 + 1 + LONG_AS_BYTES + LONG_AS_BYTES);
+        b.put(COUNTER);
+        b.put(FUNCTION_SET);
         b.putLong(id);
+        b.putLong(value);
         client.write();
         return 0;
     }
@@ -41,8 +44,9 @@ public final class Counters {
 
     public long inc(long id, int amount) {
         ByteBuffer b = client.sendBuffer;
-        b.put(ID);
-        b.put(OP_INC);
+        b.putInt(1 + 1 + LONG_AS_BYTES + LONG_AS_BYTES);
+        b.put(COUNTER);
+        b.put(FUNCTION_INC);
         b.putLong(id);
         b.putLong(amount);
         client.write();
@@ -51,12 +55,14 @@ public final class Counters {
 
     public boolean cas(long id, long oldValue, long newValue) {
         ByteBuffer b = client.sendBuffer;
-        b.put(ID);
-        b.put(OP_CAS);
+        b.putInt(1 + 1 + LONG_AS_BYTES + LONG_AS_BYTES + LONG_AS_BYTES);
+        b.put(COUNTER);
+        b.put(FUNCTION_CAS);
         b.putLong(id);
         b.putLong(oldValue);
         b.putLong(newValue);
         client.write();
         return true;
     }
+
 }
