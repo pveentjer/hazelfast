@@ -421,7 +421,6 @@ public class Server {
                     iterator.remove();
 
                     if (sk.isAcceptable()) onAccept();
-
                 }
             }
         }
