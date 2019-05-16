@@ -228,15 +228,15 @@ public class Server {
             // todo: this field is increased even if we are triggered from the onRead
             con.onWriteEvents++;
 
-            //System.out.println("onWrite beforeFilling:" + toDebugString("sendBuf", con.sendBuf));
-
             for (; ; ) {
                 if (con.sendFrame == null) {
-                    // check if there is enough space to write the length
+                    // check if there is enough space to writeAndFlush the length
                     if (con.sendBuf.remaining() < INT_AS_BYTES) break;
 
                     con.sendFrame = con.pending.poll();
                     if (con.sendFrame == null) break;
+
+                    //System.out.println("onWrite:" + con.sendFrame);
 
                     con.sendBuf.putInt(con.sendFrame.length);
                 }
@@ -255,6 +255,7 @@ public class Server {
                 con.sendBuf.put(con.sendFrame.bytes, con.sendOffset, bytesToWrite);
 
                 if (complete) {
+                    //System.out.println("send frame complete:" + con.sendFrame);
                     if (objectPoolingEnabled && (con.pooledBytes == null || con.pooledBytes.length < con.sendFrame.bytes.length)) {
                         con.pooledBytes = con.sendFrame.bytes;
                     }
@@ -266,13 +267,18 @@ public class Server {
                     con.sendFrame = null;
                     con.sendOffset = 0;
                 } else {
+                    //System.out.println("send frame not complete:" + con.sendFrame);
                     con.sendOffset += missingFromFrame;
                     break;
                 }
             }
             con.sendBuf.flip();
 
-            con.bytesWritten += channel.write(con.sendBuf);
+            //System.out.println(IOUtil.toDebugString("sendBuf", con.sendBuf));
+
+            long bytesWritten = channel.write(con.sendBuf);
+           // System.out.println("bytes written:"+bytesWritten);
+            con.bytesWritten += bytesWritten;
 
             if (con.sendBuf.remaining() == 0 && con.sendFrame == null) {
                 //System.out.println("unregister");
@@ -296,7 +302,8 @@ public class Server {
             con.onReadEvents++;
 
             int bytesRead = channel.read(con.receiveBuf);
-            if (bytesRead == -1) throw new IOException("Channel closed on the other side");
+            if (bytesRead == -1)
+                throw new IOException("Channel " + channel.socket().getInetAddress() + " closed on the other side");
             con.bytesRead += bytesRead;
 
             con.receiveBuf.flip();

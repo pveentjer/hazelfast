@@ -18,23 +18,23 @@ public final class Counters {
     }
 
     public long get(long id) {
-        ByteBuffer b = client.sendBuffer;
+        ByteBuffer b = client.sendBuf;
         b.putInt(1 + 1 + LONG_AS_BYTES);
         b.put(COUNTER);
         b.put(FUNCTION_GET);
         b.putLong(id);
-        client.write();
+        client.writeAndFlush();
         return 0;
     }
 
     public long set(long id, long value) {
-        ByteBuffer b = client.sendBuffer;
+        ByteBuffer b = client.sendBuf;
         b.putInt(1 + 1 + LONG_AS_BYTES + LONG_AS_BYTES);
         b.put(COUNTER);
         b.put(FUNCTION_SET);
         b.putLong(id);
         b.putLong(value);
-        client.write();
+        client.writeAndFlush();
         return 0;
     }
 
@@ -43,25 +43,25 @@ public final class Counters {
     }
 
     public long inc(long id, int amount) {
-        ByteBuffer b = client.sendBuffer;
+        ByteBuffer b = client.sendBuf;
         b.putInt(1 + 1 + LONG_AS_BYTES + LONG_AS_BYTES);
         b.put(COUNTER);
         b.put(FUNCTION_INC);
         b.putLong(id);
         b.putLong(amount);
-        client.write();
+        client.writeAndFlush();
         return 0;
     }
 
     public boolean cas(long id, long oldValue, long newValue) {
-        ByteBuffer b = client.sendBuffer;
+        ByteBuffer b = client.sendBuf;
         b.putInt(1 + 1 + LONG_AS_BYTES + LONG_AS_BYTES + LONG_AS_BYTES);
         b.put(COUNTER);
         b.put(FUNCTION_CAS);
         b.putLong(id);
         b.putLong(oldValue);
         b.putLong(newValue);
-        client.write();
+        client.writeAndFlush();
         return true;
     }
 

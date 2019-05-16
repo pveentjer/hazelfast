@@ -1,21 +1,21 @@
 package com.hazelfast;
 
 import com.hazelfast.impl.DataStructures;
-import com.hazelfast.impl.IOUtil;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
+import static com.hazelfast.impl.IOUtil.INT_AS_BYTES;
 import static com.hazelfast.impl.IOUtil.compactOrClear;
 
 public class Client {
 
     private InetSocketAddress address;
     private SocketChannel socketChannel;
-    ByteBuffer sendBuffer;
-    private ByteBuffer receiveBuffer;
+    ByteBuffer sendBuf;
+    private ByteBuffer receiveBuf;
     private final String hostname;
     private final int receiveBufferSize;
     private final int sendBufferSize;
@@ -61,24 +61,21 @@ public class Client {
     }
 
     public static void main(String[] args) throws Exception {
-        Client client1 = new Client(new Context());
-        Client client2 = new Client(new Context());
-        client1.start();
-        client2.start();
+        Client client = new Client(new Context());
+        client.start();
 
-        //client.dummyLoop();
-        client1.stop();
-        client2.stop();
+        client.dummyLoop();
+        client.stop();
     }
 
     public void start() throws IOException {
         log("Connecting to Server on startPort 1111...");
 
         this.address = new InetSocketAddress(hostname, 1111);
-        sendBuffer = directBuffers
+        sendBuf = directBuffers
                 ? ByteBuffer.allocateDirect(receiveBufferSize)
                 : ByteBuffer.allocate(receiveBufferSize);
-        receiveBuffer = directBuffers
+        receiveBuf = directBuffers
                 ? ByteBuffer.allocateDirect(sendBufferSize)
                 : ByteBuffer.allocate(sendBufferSize);
 
@@ -97,14 +94,17 @@ public class Client {
     }
 
     public void dummyLoop() throws IOException {
-
         try {
             long startMs = System.currentTimeMillis();
             int count = 100000;
             for (int k = 0; k < count; k++) {
-                System.out.println("Writing request");
-                ping(new byte[100 * 1024]);
-                System.out.println("Reading response");
+                System.out.println("Writing request1");
+                writeAndFlush(new byte[100]);
+                System.out.println("Writing request1");
+                writeAndFlush(new byte[100]);
+                System.out.println("Reading response1");
+                readResponse();
+                System.out.println("Reading response2");
                 readResponse();
                 System.out.println("k:" + k);
             }
@@ -117,53 +117,39 @@ public class Client {
         }
     }
 
-    public void dummyLoopInternal() throws IOException {
 
-        try {
-            long startMs = System.currentTimeMillis();
-            int count = 100000;
-            for (int k = 0; k < count; k++) {
-                System.out.println("Writing request");
-                ping(new byte[100 * 1024]);
-                System.out.println("Reading response");
-                readResponse();
-                System.out.println("k:" + k);
-            }
-            long durationMs = System.currentTimeMillis() - startMs;
-
-            System.out.println("Duration:" + durationMs + " ms");
-            System.out.println("Throughput:" + (1000f * count) / durationMs + " msg/second");
-        } catch (Throwable t) {
-            t.printStackTrace();
-        }
+    public void writeAndFlush(String message) throws IOException {
+        writeAndFlush(message.getBytes());
     }
 
-    public void ping(String message) throws IOException {
-        ping(message.getBytes());
+    public void writeAndFlush(byte[] message) throws IOException {
+        write(message);
+        flush();
     }
 
-    public void ping(byte[] message) throws IOException {
-        sendBuffer.putInt(message.length+1);
-        //sendBuf.putInt(1);
-        sendBuffer.put(DataStructures.PING);
-        sendBuffer.put(message);
-
-        sendBuffer.flip();
-        int written = socketChannel.write(sendBuffer);
-        //System.out.println("send "+written+" bytes, remaining:"+sendBuf.remaining());
-
+    public void flush() throws IOException {
+        sendBuf.flip();
+        int written = socketChannel.write(sendBuf);
+//        System.out.println("send " + written + " bytes");
 
         //log("sending: " + companyName);
-        sendBuffer.clear();
+        sendBuf.clear();
     }
 
-    protected void write() {
+    public void write(byte[] message) {
+        sendBuf.putInt(message.length + 1);
+        //sendBuf.putInt(1);
+        sendBuf.put(DataStructures.PING);
+        sendBuf.put(message);
+    }
+
+    protected void writeAndFlush() {
         try {
-            sendBuffer.flip();
-            socketChannel.write(sendBuffer);
+            sendBuf.flip();
+            socketChannel.write(sendBuf);
 
             //log("sending: " + companyName);
-            sendBuffer.clear();
+            sendBuf.clear();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -173,27 +159,29 @@ public class Client {
 
     public void readResponse() throws IOException {
         byte[] bytes = null;
-
         int offset = 0;
-        for (; ; ) {
-            // System.out.println(Util.toDebugString("receiveBuf",receiveBuf));
-            int read = socketChannel.read(receiveBuffer);
 
-            if (read == -1) {
-                socketChannel.close();
-                throw new IOException("Socket Closed by remote");
+        boolean skipRead = true;
+        for (; ; ) {
+            if(!skipRead) {
+                int read = socketChannel.read(receiveBuf);
+                if (read == -1) {
+                    socketChannel.close();
+                    throw new IOException("Socket Closed by remote");
+                }
+             //   System.out.println("read:" + read + " bytes");
             }
 
-            //System.out.println("read:" + read+" bytes,"+Util.toDebugString("receiveBuf",receiveBuf));
-            receiveBuffer.flip();
+            skipRead = false;
 
+            receiveBuf.flip();
             try {
                 if (bytes == null) {
-                    if (receiveBuffer.remaining() < IOUtil.INT_AS_BYTES) {
+                    if (receiveBuf.remaining() < INT_AS_BYTES) {
                         continue;
                     }
 
-                    int len = receiveBuffer.getInt();
+                    int len = receiveBuf.getInt();
                     if (objectPoolingEnabled && pooledBytes != null && pooledBytes.length >= len) {
                         bytes = pooledBytes;
                         pooledBytes = null;
@@ -204,25 +192,24 @@ public class Client {
                 int needed = bytes.length - offset;
                 int length;
                 boolean complete = false;
-                if (receiveBuffer.remaining() >= needed) {
+                if (receiveBuf.remaining() >= needed) {
                     length = needed;
                     complete = true;
                 } else {
-                    length = receiveBuffer.remaining();
+                    length = receiveBuf.remaining();
                 }
 
-                receiveBuffer.get(bytes, offset, length);
+                receiveBuf.get(bytes, offset, length);
                 if (complete) {
                     if (objectPoolingEnabled) {
                         pooledBytes = bytes;
                     }
                     return;
-
                 } else {
                     offset += length;
                 }
             } finally {
-                compactOrClear(receiveBuffer);
+                compactOrClear(receiveBuf);
             }
         }
     }

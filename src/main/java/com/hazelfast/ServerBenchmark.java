@@ -44,9 +44,17 @@ public class ServerBenchmark {
         client.stop();
     }
 
+//    @Benchmark
+//    public void benchmark() throws IOException {
+//        client.writeAndFlush(message);
+//        client.readResponse();
+//    }
+
     @Benchmark
-    public void benchmark() throws IOException {
-        client.ping(message);
+    public void pipelinedBenchmark() throws IOException {
+        client.writeAndFlush(message);
+        client.writeAndFlush(message);
+        client.readResponse();
         client.readResponse();
     }
 }

@@ -1,8 +1,5 @@
 package com.hazelfast;
 
-import com.hazelfast.impl.DataStructures;
-import com.hazelfast.impl.StringsData;
-
 import java.nio.ByteBuffer;
 
 import static com.hazelfast.impl.DataStructures.STRINGS;
@@ -17,21 +14,21 @@ public class Strings {
     }
 
     public void set(String key, String value) {
-        ByteBuffer b = client.sendBuffer;
+        ByteBuffer b = client.sendBuf;
         b.put(STRINGS);
         b.put(FUNCTION_SET);
 
-        client.write();
+        client.writeAndFlush();
 
         //return 0;
     }
 
     public String get(String key) {
-        ByteBuffer b = client.sendBuffer;
+        ByteBuffer b = client.sendBuf;
         b.put(STRINGS);
         b.put(FUNCTION_GET);
 
-        client.write();
+        client.writeAndFlush();
         return null;
     }
 
