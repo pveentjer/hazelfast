@@ -3,6 +3,7 @@ package com.hazelfast;
 import com.hazelfast.impl.ByteArrayPool;
 import com.hazelfast.impl.DataStructures;
 import com.hazelfast.impl.Frame;
+import com.hazelfast.impl.FramePool;
 import com.hazelfast.impl.IOUtil;
 
 import java.io.IOException;
@@ -19,6 +20,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.hazelfast.impl.IOUtil.INT_AS_BYTES;
+import static com.hazelfast.impl.IOUtil.allocateByteBuffer;
 import static com.hazelfast.impl.IOUtil.compactOrClear;
 import static com.hazelfast.impl.IOUtil.setReceiveBufferSize;
 import static com.hazelfast.impl.IOUtil.setSendBufferSize;
@@ -197,12 +199,8 @@ public class Server {
                 channel.socket().setTcpNoDelay(tcpNoDelay);
 
                 Connection con = new Connection(objectPoolingEnabled);
-                con.receiveBuf = directBuffers
-                        ? ByteBuffer.allocateDirect(receiveBufferSize)
-                        : ByteBuffer.allocate(receiveBufferSize);
-                con.sendBuf = directBuffers
-                        ? ByteBuffer.allocateDirect(sendBufferSize)
-                        : ByteBuffer.allocate(sendBufferSize);
+                con.receiveBuf = allocateByteBuffer(directBuffers, receiveBufferSize);
+                con.sendBuf = allocateByteBuffer(directBuffers, sendBufferSize);
 
                 // System.out.println(toDebugString("create sendBuf", connection.sendBuf));
 
@@ -251,11 +249,7 @@ public class Server {
                 if (complete) {
                     //System.out.println("send frame complete:" + con.sendFrame);
                     con.byteArrayPool.returnToPool(con.sendFrame.bytes);
-                    con.sendFrame.bytes = null;
-                    con.sendFrame.length = 0;
-                    if (objectPoolingEnabled) {
-                        con.framePool.add(con.sendFrame);
-                    }
+                    con.framePool.returnToPool(con.sendFrame);
                     con.sendFrame = null;
                     con.sendOffset = 0;
                 } else {
@@ -306,9 +300,7 @@ public class Server {
                         // not enough bytes available for the frame size; we are done.
                         if (con.receiveBuf.remaining() < INT_AS_BYTES) break;
 
-                        con.receiveFrame = con.framePool.poll();
-                        if (con.receiveFrame == null) con.receiveFrame = new Frame();
-
+                        con.receiveFrame = con.framePool.takeFromPool();
                         con.receiveFrame.length = con.receiveBuf.getInt();
                         if (con.receiveFrame.length < 0)
                             throw new IOException("Frame length can't be negative. Found:" + con.receiveFrame.length);
@@ -350,7 +342,7 @@ public class Server {
         SocketChannel channel;
 
         final ByteArrayPool byteArrayPool;
-        final ArrayDeque<Frame> framePool = new ArrayDeque<>();
+        final FramePool framePool;
 
         ByteBuffer receiveBuf;
         Frame receiveFrame;
@@ -366,8 +358,11 @@ public class Server {
         Frame sendFrame;
         ByteBuffer sendBuf;
 
+
+
         Connection(boolean objectPoolingEnabled) {
             byteArrayPool = new ByteArrayPool(objectPoolingEnabled);
+            framePool = new FramePool(objectPoolingEnabled);
         }
     }
 

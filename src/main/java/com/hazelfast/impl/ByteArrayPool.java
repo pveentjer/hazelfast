@@ -16,29 +16,25 @@ public final class ByteArrayPool {
 
     public byte[] takeFromPool(int size) {
         if (!enabled) return new byte[size];
-        if (size <= 0) throw new IllegalArgumentException("size can't be negative,size=" + size);
+        if (size < 0) throw new IllegalArgumentException("size can't be negative,size=" + size);
 
         size = powerOfTwo(size);
         int index = log2(size);
-
         //System.out.println("index:" + index);
         ArrayDeque<byte[]> deq = array[index];
         if (deq == null) return new byte[size];
-
         byte[] result = deq.pollFirst();
         return result != null ? result : new byte[size];
     }
 
     public void returnToPool(byte[] a) {
         if (!enabled) return;
-        if (a == null) throw new IllegalArgumentException("array can't be null");
+        if (a == null) throw new NullPointerException("array can't be null");
         if (!isPowerOfTwo(a.length))
             throw new IllegalArgumentException("Only array with power of 2 length, found:" + a.length);
 
         int index = log2(a.length);
-
         ArrayDeque<byte[]> deq = array[index];
-
         if (deq == null) {
             deq = new ArrayDeque<>();
             array[index] = deq;

@@ -1,6 +1,9 @@
 package com.hazelfast;
 
+import com.hazelfast.impl.ByteArrayPool;
 import com.hazelfast.impl.DataStructures;
+import com.hazelfast.impl.Frame;
+import com.hazelfast.impl.FramePool;
 import com.hazelfast.impl.IOUtil;
 
 import java.io.IOException;
@@ -15,6 +18,7 @@ import static com.hazelfast.impl.IOUtil.setSendBufferSize;
 
 public class Client {
 
+    private final FramePool framePool;
     private InetSocketAddress address;
     private SocketChannel socketChannel;
     ByteBuffer sendBuf;
@@ -27,6 +31,7 @@ public class Client {
     private final boolean objectPoolingEnabled;
     private final Counters counters;
     private final Strings strings;
+    private final ByteArrayPool byteArrayPool;
 
     public Client(Context context) {
         hostname = context.hostname;
@@ -37,6 +42,8 @@ public class Client {
         objectPoolingEnabled = context.objectPoolingEnabled;
         counters = new Counters(this);
         strings = new Strings(this);
+        this.byteArrayPool = new ByteArrayPool(objectPoolingEnabled);
+        this.framePool  = new FramePool(objectPoolingEnabled);
     }
 
     public String hostname() {
@@ -158,10 +165,8 @@ public class Client {
         }
     }
 
-    private byte[] pooledBytes;
-
     public void readResponse() throws IOException {
-        byte[] bytes = null;
+        Frame frame = null;
         int offset = 0;
 
         boolean skipRead = true;
@@ -179,20 +184,16 @@ public class Client {
 
             receiveBuf.flip();
             try {
-                if (bytes == null) {
+                if (frame == null) {
                     if (receiveBuf.remaining() < INT_AS_BYTES) {
                         continue;
                     }
 
-                    int len = receiveBuf.getInt();
-                    if (objectPoolingEnabled && pooledBytes != null && pooledBytes.length >= len) {
-                        bytes = pooledBytes;
-                        pooledBytes = null;
-                    } else {
-                        bytes = new byte[len];
-                    }
+                    frame = framePool.takeFromPool();
+                    frame.length = receiveBuf.getInt();
+                    frame.bytes = byteArrayPool.takeFromPool(frame.length);
                 }
-                int needed = bytes.length - offset;
+                int needed = frame.length - offset;
                 int length;
                 boolean complete = false;
                 if (receiveBuf.remaining() >= needed) {
@@ -202,11 +203,10 @@ public class Client {
                     length = receiveBuf.remaining();
                 }
 
-                receiveBuf.get(bytes, offset, length);
+                receiveBuf.get(frame.bytes, offset, length);
                 if (complete) {
-                    if (objectPoolingEnabled) {
-                        pooledBytes = bytes;
-                    }
+                    byteArrayPool.returnToPool(frame.bytes);
+                    framePool.returnToPool(frame);
                     return;
                 } else {
                     offset += length;

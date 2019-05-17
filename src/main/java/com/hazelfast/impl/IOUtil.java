@@ -18,6 +18,10 @@ public class IOUtil {
     public static final int INT_AS_BYTES = 4;
     public static final int LONG_AS_BYTES = 8;
 
+    public static ByteBuffer allocateByteBuffer(boolean direct, int capacity){
+        return direct ? ByteBuffer.allocateDirect(capacity) : ByteBuffer.allocate(capacity);
+    }
+
     public static void compactOrClear(ByteBuffer bb) {
         if (bb.hasRemaining()) {
             bb.compact();
@@ -25,6 +29,7 @@ public class IOUtil {
             bb.clear();
         }
     }
+
     public static void setSendBufferSize(SocketChannel channel, int sendBufferSize) throws SocketException {
         channel.socket().setSendBufferSize(sendBufferSize);
         if (channel.socket().getSendBufferSize() != sendBufferSize) {
