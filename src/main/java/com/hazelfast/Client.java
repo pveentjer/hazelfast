@@ -28,7 +28,6 @@ public class Client {
     private final int sendBufferSize;
     private final boolean tcpNoDelay;
     private final boolean directBuffers;
-    private final boolean objectPoolingEnabled;
     private final Counters counters;
     private final Strings strings;
     private final ByteArrayPool byteArrayPool;
@@ -39,11 +38,10 @@ public class Client {
         sendBufferSize = context.sendBufferSize;
         tcpNoDelay = context.tcpNoDelay;
         directBuffers = context.directBuffers;
-        objectPoolingEnabled = context.objectPoolingEnabled;
         counters = new Counters(this);
         strings = new Strings(this);
-        this.byteArrayPool = new ByteArrayPool(objectPoolingEnabled);
-        this.framePool  = new FramePool(objectPoolingEnabled);
+        this.byteArrayPool = new ByteArrayPool(context.objectPoolingEnabled);
+        this.framePool  = new FramePool(context.objectPoolingEnabled);
     }
 
     public String hostname() {
@@ -64,10 +62,6 @@ public class Client {
 
     public boolean directBuffers() {
         return directBuffers;
-    }
-
-    public boolean objectPoolingEnabled() {
-        return objectPoolingEnabled;
     }
 
     public static void main(String[] args) throws Exception {
