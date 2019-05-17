@@ -1,6 +1,7 @@
 package com.hazelfast;
 
 import com.hazelfast.impl.DataStructures;
+import com.hazelfast.impl.IOUtil;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -9,6 +10,8 @@ import java.nio.channels.SocketChannel;
 
 import static com.hazelfast.impl.IOUtil.INT_AS_BYTES;
 import static com.hazelfast.impl.IOUtil.compactOrClear;
+import static com.hazelfast.impl.IOUtil.setReceiveBufferSize;
+import static com.hazelfast.impl.IOUtil.setSendBufferSize;
 
 public class Client {
 
@@ -81,8 +84,8 @@ public class Client {
 
         socketChannel = SocketChannel.open(address);
         socketChannel.socket().setTcpNoDelay(tcpNoDelay);
-        socketChannel.socket().setReceiveBufferSize(receiveBufferSize);
-        socketChannel.socket().setSendBufferSize(sendBufferSize);
+        setReceiveBufferSize(socketChannel, receiveBufferSize);
+        setSendBufferSize(socketChannel, sendBufferSize);
     }
 
     public Counters counters() {

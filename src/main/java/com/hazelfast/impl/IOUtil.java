@@ -2,9 +2,11 @@ package com.hazelfast.impl;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.net.SocketException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
 import java.util.AbstractSet;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
@@ -21,6 +23,21 @@ public class IOUtil {
             bb.compact();
         } else {
             bb.clear();
+        }
+    }
+    public static void setSendBufferSize(SocketChannel channel, int sendBufferSize) throws SocketException {
+        channel.socket().setSendBufferSize(sendBufferSize);
+        if (channel.socket().getSendBufferSize() != sendBufferSize) {
+            System.out.println("socket doesn't have expected sendBufferSize, expected:"
+                    + sendBufferSize + " actual:" + channel.socket().getSendBufferSize());
+        }
+    }
+
+    public static void setReceiveBufferSize(SocketChannel channel, int receiveBufferSize) throws SocketException {
+        channel.socket().setReceiveBufferSize(receiveBufferSize);
+        if (channel.socket().getReceiveBufferSize() != receiveBufferSize) {
+            System.out.println("socket doesn't have expected receiveBufferSize, expected:"
+                    + receiveBufferSize + " actual:" + channel.socket().getReceiveBufferSize());
         }
     }
 

@@ -19,6 +19,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.hazelfast.impl.IOUtil.INT_AS_BYTES;
 import static com.hazelfast.impl.IOUtil.compactOrClear;
+import static com.hazelfast.impl.IOUtil.setReceiveBufferSize;
+import static com.hazelfast.impl.IOUtil.setSendBufferSize;
 import static java.lang.Math.max;
 
 public class Server {
@@ -189,18 +191,8 @@ public class Server {
                 }
                 channel.configureBlocking(false);
 
-                channel.socket().setReceiveBufferSize(receiveBufferSize);
-                if (channel.socket().getReceiveBufferSize() != receiveBufferSize) {
-                    System.out.println("socket doesn't have expected receiveBufferSize, expected:"
-                            + receiveBufferSize + " actual:" + channel.socket().getReceiveBufferSize());
-                }
-
-                channel.socket().setSendBufferSize(sendBufferSize);
-                if (channel.socket().getSendBufferSize() != sendBufferSize) {
-                    System.out.println("socket doesn't have expected sendBufferSize, expected:"
-                            + sendBufferSize + " actual:" + channel.socket().getSendBufferSize());
-                }
-
+                setReceiveBufferSize(channel, receiveBufferSize);
+                setSendBufferSize(channel, sendBufferSize);
                 channel.socket().setTcpNoDelay(tcpNoDelay);
 
                 Connection con = new Connection();
@@ -220,6 +212,7 @@ public class Server {
                 // log(getName() + " waiting for data on " + connection.channel.socket().getInetAddress());
             }
         }
+
 
         private void onWrite(SelectionKey sk) throws IOException {
             //System.out.println("onWrite");
@@ -277,7 +270,7 @@ public class Server {
             //System.out.println(IOUtil.toDebugString("sendBuf", con.sendBuf));
 
             long bytesWritten = channel.write(con.sendBuf);
-           // System.out.println("bytes written:"+bytesWritten);
+            // System.out.println("bytes written:"+bytesWritten);
             con.bytesWritten += bytesWritten;
 
             if (con.sendBuf.remaining() == 0 && con.sendFrame == null) {
