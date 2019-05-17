@@ -4,7 +4,6 @@ import com.hazelfast.impl.ByteArrayPool;
 import com.hazelfast.impl.DataStructures;
 import com.hazelfast.impl.Frame;
 import com.hazelfast.impl.FramePool;
-import com.hazelfast.impl.IOUtil;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -12,6 +11,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
 import static com.hazelfast.impl.IOUtil.INT_AS_BYTES;
+import static com.hazelfast.impl.IOUtil.allocateByteBuffer;
 import static com.hazelfast.impl.IOUtil.compactOrClear;
 import static com.hazelfast.impl.IOUtil.setReceiveBufferSize;
 import static com.hazelfast.impl.IOUtil.setSendBufferSize;
@@ -21,7 +21,7 @@ public class Client {
     private final FramePool framePool;
     private InetSocketAddress address;
     private SocketChannel socketChannel;
-    ByteBuffer sendBuf;
+    private ByteBuffer sendBuf;
     private ByteBuffer receiveBuf;
     private final String hostname;
     private final int receiveBufferSize;
@@ -41,7 +41,7 @@ public class Client {
         counters = new Counters(this);
         strings = new Strings(this);
         this.byteArrayPool = new ByteArrayPool(context.objectPoolingEnabled);
-        this.framePool  = new FramePool(context.objectPoolingEnabled);
+        this.framePool = new FramePool(context.objectPoolingEnabled);
     }
 
     public String hostname() {
@@ -76,13 +76,8 @@ public class Client {
         log("Connecting to Server on startPort 1111...");
 
         this.address = new InetSocketAddress(hostname, 1111);
-        sendBuf = directBuffers
-                ? ByteBuffer.allocateDirect(receiveBufferSize)
-                : ByteBuffer.allocate(receiveBufferSize);
-        receiveBuf = directBuffers
-                ? ByteBuffer.allocateDirect(sendBufferSize)
-                : ByteBuffer.allocate(sendBufferSize);
-
+        sendBuf = allocateByteBuffer(directBuffers, receiveBufferSize);
+        receiveBuf = allocateByteBuffer(directBuffers, sendBufferSize);
         socketChannel = SocketChannel.open(address);
         socketChannel.socket().setTcpNoDelay(tcpNoDelay);
         setReceiveBufferSize(socketChannel, receiveBufferSize);
@@ -120,7 +115,6 @@ public class Client {
             t.printStackTrace();
         }
     }
-
 
     public void writeAndFlush(String message) throws IOException {
         writeAndFlush(message.getBytes());
@@ -165,13 +159,13 @@ public class Client {
 
         boolean skipRead = true;
         for (; ; ) {
-            if(!skipRead) {
+            if (!skipRead) {
                 int read = socketChannel.read(receiveBuf);
                 if (read == -1) {
                     socketChannel.close();
                     throw new IOException("Socket Closed by remote");
                 }
-             //   System.out.println("read:" + read + " bytes");
+                //   System.out.println("read:" + read + " bytes");
             }
 
             skipRead = false;
@@ -217,8 +211,8 @@ public class Client {
 
     public static class Context {
         private String hostname = "localhost";
-        private int receiveBufferSize = 128 * 1024;
-        private int sendBufferSize = 128 * 1024;
+        private int receiveBufferSize = 256 * 1024;
+        private int sendBufferSize = 256 * 1024;
         private boolean tcpNoDelay = true;
         private boolean directBuffers = true;
         private boolean objectPoolingEnabled = true;

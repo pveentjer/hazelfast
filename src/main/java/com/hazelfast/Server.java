@@ -212,7 +212,6 @@ public class Server {
             }
         }
 
-
         private void onWrite(SelectionKey sk) throws IOException {
             //System.out.println("onWrite");
             SocketChannel channel = (SocketChannel) sk.channel();
@@ -431,8 +430,8 @@ public class Server {
         private int serverThreadCount = max(4, Runtime.getRuntime().availableProcessors() / 2);
         private String bindAddress = "0.0.0.0";
         private int startPort = 1111;
-        private int receiveBufferSize = 512 * 1024;
-        private int sendBufferSize = 512 * 1024;
+        private int receiveBufferSize = 256 * 1024;
+        private int sendBufferSize = 256 * 1024;
         private boolean tcpNoDelay = true;
         private boolean objectPoolingEnabled = true;
         private boolean optimizeSelector = true;
