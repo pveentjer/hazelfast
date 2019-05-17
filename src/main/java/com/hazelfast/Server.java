@@ -26,8 +26,19 @@ import static com.hazelfast.impl.IOUtil.setReceiveBufferSize;
 import static com.hazelfast.impl.IOUtil.setSendBufferSize;
 import static java.lang.Math.max;
 
+/**
+ * Ways to connect:
+ * - each server thread has its own IO port.
+ * - then the client needs to know how many IO threads there are per server.
+ * This will not increase latency since connecting can be done in parallel
+ * This requires more configuration. Server can't decide without telling the client
+ * how many IO threads there are.
+ * - shared io port for all server threads; but how does a client then identify the IO thread it wants to register to?
+ * - then the server could tell to the client the number of remaining connections are needed.
+ * This will increase latency since multiple round trips are needed.
+ * This will require less configuration. Server will client how to complete the handshake.
+ */
 public class Server {
-
 
     private final AtomicInteger ioThreadId = new AtomicInteger(0);
     private ServerSocketChannel serverSocket;
@@ -189,26 +200,18 @@ public class Server {
         private void registerNewChannels() throws IOException {
             for (; ; ) {
                 SocketChannel channel = newChannels.poll();
-                if (channel == null) {
-                    break;
-                }
+                if (channel == null) break;
+
+
                 channel.configureBlocking(false);
-
-                setReceiveBufferSize(channel, receiveBufferSize);
-                setSendBufferSize(channel, sendBufferSize);
                 channel.socket().setTcpNoDelay(tcpNoDelay);
-
                 Connection con = new Connection(objectPoolingEnabled);
                 con.receiveBuf = allocateByteBuffer(directBuffers, receiveBufferSize);
+                setReceiveBufferSize(channel, receiveBufferSize);
                 con.sendBuf = allocateByteBuffer(directBuffers, sendBufferSize);
-
-                // System.out.println(toDebugString("create sendBuf", connection.sendBuf));
-
+                setSendBufferSize(channel, sendBufferSize);
                 con.channel = channel;
-
                 channel.register(selector, SelectionKey.OP_READ, con);
-
-                // log(getName() + " waiting for data on " + connection.channel.socket().getInetAddress());
             }
         }
 
@@ -356,8 +359,6 @@ public class Server {
         int sendOffset;
         Frame sendFrame;
         ByteBuffer sendBuf;
-
-
 
         Connection(boolean objectPoolingEnabled) {
             byteArrayPool = new ByteArrayPool(objectPoolingEnabled);
