@@ -21,7 +21,7 @@ public class Client {
     private final FramePool framePool;
     private InetSocketAddress address;
     private SocketChannel socketChannel;
-    private ByteBuffer sendBuf;
+    protected ByteBuffer sendBuf;
     private ByteBuffer receiveBuf;
     private final String hostname;
     private final int receiveBufferSize;

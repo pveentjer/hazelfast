@@ -202,7 +202,6 @@ public class Server {
                 SocketChannel channel = newChannels.poll();
                 if (channel == null) break;
 
-
                 channel.configureBlocking(false);
                 channel.socket().setTcpNoDelay(tcpNoDelay);
                 Connection con = new Connection(objectPoolingEnabled);
